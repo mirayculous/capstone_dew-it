@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from flask_cors import CORS
+import pickle
 import pandas as pd
 import numpy as np
 import tensorflow as tf
@@ -16,14 +17,14 @@ if not SERVICE_ACCOUNT_FILE:
     raise RuntimeError("GOOGLE_APPLICATION_CREDENTIALS environment variable is not set.")
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'
+app.secret_key = 'your_secret_key' 
 
 # Set up Google Cloud SQL connection
 connector = Connector()
 DATABASE = {
-    "project_id": "capstone-442107",
+    "project_id": "project-dewit-442507",\
     "region": "asia-southeast2",
-    "instance_id": "dewit",
+    "instance_id": "sql",
     "database_name": "dewit",
     "user": "root",
     "password": "root"
@@ -31,18 +32,15 @@ DATABASE = {
 
 # Function to connect to the database
 def get_connection():
-    try:
         connection = connector.connect(
             f"{DATABASE['project_id']}:{DATABASE['region']}:{DATABASE['instance_id']}",
             "pymysql",
             user=DATABASE['user'],
             password=DATABASE['password'],
             db=DATABASE['database_name'],
+            port=3306,
         )
         return connection
-    except Exception as e:
-        print(f"Error connecting to database: {e}")
-        return None
 
 # Initialize the database
 with get_connection() as conn:
@@ -65,7 +63,7 @@ with get_connection() as conn:
                     CREATE TABLE IF NOT EXISTS incomes (
                         id INT AUTO_INCREMENT PRIMARY KEY,
                         user_id INT NOT NULL,
-                        amount DECIMAL(10, 2) NOT NULL,
+                        amount FLOAT NOT NULL,
                         date DATE NOT NULL,
                         FOREIGN KEY (user_id) REFERENCES users(id)
                     )
@@ -76,7 +74,7 @@ with get_connection() as conn:
                     CREATE TABLE IF NOT EXISTS expenses (
                         id INT AUTO_INCREMENT PRIMARY KEY,
                         user_id INT NOT NULL,
-                        amount DECIMAL(10, 2) NOT NULL,
+                        amount FLOAT NOT NULL,
                         date DATE NOT NULL,
                         FOREIGN KEY (user_id) REFERENCES users(id)
                     )
@@ -190,9 +188,7 @@ def transactions():
 
         return render_template(
             'transaction.html', 
-            income_transactions=income_transactions, 
-            expense_transactions=expense_transactions, 
-            username=username
+            income_transactions=income_transactions, expense_transactions=expense_transactions, username=username
         )
     
     return redirect(url_for('login'))
@@ -241,7 +237,7 @@ def add_transaction():
                 conn.close()
 
         return redirect(url_for('transactions'))
-    else:
+    else:\
         return redirect(url_for('login'))
 
 
@@ -268,71 +264,28 @@ def delete_transaction(transaction_type, transaction_id):
 
     return redirect(url_for('transactions'))
 
-# Load models
-income_model = tf.keras.models.load_model(
-    'app\model\model_income.h5', custom_objects={'mse': tf.keras.losses.MeanSquaredError()}
+# Define constants
+WINDOW_SIZE = 12
+
+# Load pre-trained models
+model_income = tf.keras.models.load_model(
+    'app/model/model_income.h5',
+    custom_objects={'mse': tf.keras.losses.MeanSquaredError()}
 )
-expenses_model = tf.keras.models.load_model(
-    'app\model\model_expenses.h5', custom_objects={'mse': tf.keras.losses.MeanSquaredError()}
+
+model_expenses = tf.keras.models.load_model(
+    'app/model/model_expenses.h5',
+    custom_objects={'mse': tf.keras.losses.MeanSquaredError()}
 )
 
 # Load scalers
-income_scaler = MinMaxScaler(feature_range=(0, 1))
-expenses_scaler = MinMaxScaler(feature_range=(0, 1))
+with open('app/model/scaler_income.pkl', 'rb') as f:
+    scaler_income = pickle.load(f)
 
-@app.route("/statistics", methods=["GET", "POST"])
-def statistics():
-    user_id = session.get('user_id')
-    if request.method == "POST":
-        try:
-            # Hubungkan ke database cloud
-            conn = get_connection()
-            cursor = conn.cursor()
+with open('app/model/scaler_expenses.pkl', 'rb') as f:
+    scaler_expenses = pickle.load(f)
 
-            cursor.execute(
-            "SELECT amount FROM incomes WHERE user_id = %s ORDER BY date DESC LIMIT 12", (user_id,))
-            income_data = cursor.fetchall()
-            income_data = [row[0] for row in income_data]  # Mengubah hasil menjadi list sederhana
-
-            # Mengambil data pengeluaran terakhir 12 bulan
-            cursor.execute(
-            "SELECT amount FROM expenses WHERE user_id = %s ORDER BY date DESC LIMIT 12", (user_id,))
-            expenses_data = cursor.fetchall()
-            expenses_data = [row[0] for row in expenses_data]  # Mengubah hasil menjadi list sederhana
-
-            conn.close()
-
-            # Validasi data
-            if len(income_data) != 12 or len(expenses_data) != 12:
-                return jsonify({"error": "Data dari database tidak mencukupi."}), 500
-
-            # Siapkan data input untuk model
-            income_values = [row[0] for row in income_data]
-            expenses_values = [row[0] for row in expenses_data]
-
-            last_window_income = income_scaler.fit_transform(
-                np.array(income_values).reshape(-1, 1)
-            ).reshape(1, -1, 1)
-
-            last_window_expenses = expenses_scaler.fit_transform(
-                np.array(expenses_values).reshape(-1, 1)
-            ).reshape(1, -1, 1)
-
-            # Prediksi
-            future_income = forecast_future(income_model, income_scaler, last_window_income)
-            future_expenses = forecast_future(expenses_model, expenses_scaler, last_window_expenses)
-
-            return jsonify({
-                "forecasted_income": list(map(float, future_income.flatten())),
-                "forecasted_expenses": list(map(float, future_expenses.flatten()))
-            })
-
-        except Exception as e:
-            return jsonify({"error": f"Terjadi kesalahan: {str(e)}"}), 500
-
-    return render_template("statistics.html")
-
-
+# Define prediction function
 def forecast_future(model, scaler, last_window, steps=12):
     future_input = last_window
     forecast = []
@@ -343,5 +296,32 @@ def forecast_future(model, scaler, last_window, steps=12):
     forecast = np.array(forecast).reshape(-1, 1)
     return scaler.inverse_transform(forecast)
 
+# Define routes
+@app.route("/forecast", methods=["GET", "POST"])
+def forecast():
+    if request.method == "POST":
+        data = request.json
+        if not data or "last_window" not in data:
+            return jsonify({"error": "Invalid input"}), 400
+
+        last_window_income = np.array(data["last_window"]["income"]).reshape(1, -1, 1)
+        last_window_expenses = np.array(data["last_window"]["expenses"]).reshape(1, -1, 1)
+
+        if last_window_income.shape[1] != WINDOW_SIZE or last_window_expenses.shape[1] != WINDOW_SIZE:
+            return jsonify({"error": "Each input must contain exactly 12 values."}), 400
+
+        # Forecast income and expenses
+        future_income = forecast_future(model_income, scaler_income, last_window_income)
+        future_expenses = forecast_future(model_expenses, scaler_expenses, last_window_expenses)
+
+        return jsonify({
+            "forecasted_income": list(map(float, future_income.flatten())),
+            "forecasted_expenses": list(map(float, future_expenses.flatten()))
+        })
+
+    return render_template("statistics.html")
+
+
 if __name__ == "__main__":
     app.run(debug=True)
+
