@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+
+{% block title %}
+Home - Finance Tracker
+{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <h2>Welcome, {{ username }}!</h2>
+    <div class="col-md-4 mt-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Total Income</h5>
+                <h6 class="card-subtitle mb-2 text-muted">₹{{ total_income }}</h6>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mt-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Total Expense</h5>
+                <h6 class="card-subtitle mb-2 text-muted">₹{{ total_expense }}</h6>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mt-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Net Balance</h5>
+                <h6 class="card-subtitle mb-2 text-muted">
+                    ₹{{ total_income - total_expense }}
+                </h6>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

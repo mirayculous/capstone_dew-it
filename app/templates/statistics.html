@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial Statistics</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1>Financial Statistics Forecast</h1>
+    </header>
+
+    <main>
+        <form id="statisticsForm" method="POST">
+            <button type="submit">Generate Statistics</button>
+        </form>
+
+        <div id="result">
+            <h2>Forecast Results</h2>
+            <p id="income"></p>
+            <p id="expenses"></p>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2024 Finance Tracker</p>
+    </footer>
+
+    <script>
+        document.getElementById("statisticsForm").addEventListener("submit", async function(event) {
+            event.preventDefault();
+            const response = await fetch("/statistics", {
+                method: "POST",
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                document.getElementById("income").innerText = 
+                    "Forecasted Income: " + data.forecasted_income.join(", ");
+                document.getElementById("expenses").innerText = 
+                    "Forecasted Expenses: " + data.forecasted_expenses.join(", ");
+            } else {
+                alert(data.error || "Failed to fetch data.");
+            }
+        });
+    </script>
+</body>
+</html>
