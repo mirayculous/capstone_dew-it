@@ -64,7 +64,7 @@ Transactions - Finance Tracker
                 {% for transaction in income_transactions %}
                     <tr>
                         <td>{{ transaction[3] }}</td>  {# Date #}
-                        <td>₹{{ transaction[2] }}</td>  {# Amount #}
+                        <td>Rp{{ transaction[2] }}</td>  {# Amount #}
                         <td>
                             <form action="{{ url_for('delete_transaction', transaction_type='income', transaction_id=transaction[0]) }}" method="post">
                                 <button type="submit" class="btn btn-danger"><i class="fas fa-trash-alt"></i></button>
@@ -93,7 +93,7 @@ Transactions - Finance Tracker
                 {% for transaction in expense_transactions %}
                     <tr>
                         <td>{{ transaction[3] }}</td>  {# Date #}
-                        <td>₹{{ transaction[2] }}</td>  {# Amount #}
+                        <td>Rp{{ transaction[2] }}</td>  {# Amount #}
                         <td>
                             <form action="{{ url_for('delete_transaction', transaction_type='expense', transaction_id=transaction[0]) }}" method="post">
                                 <button type="submit" class="btn btn-danger"><i class="fas fa-trash-alt"></i></button>
@@ -146,7 +146,7 @@ Transactions - Finance Tracker
         let csvContent = 'Date,Amount,Type\n';
         rows.forEach(row => {
             const columns = row.querySelectorAll('td');
-            const rowData = Array.from(columns).map(column => column.textContent.replace(/\n/g, '').replace('₹', ''));
+            const rowData = Array.from(columns).map(column => column.textContent.replace(/\n/g, '').replace('Rp', ''));
             csvContent += rowData.join(',') + '\n';
         });
 
