@@ -5,159 +5,137 @@ Transactions - Finance Tracker
 {% endblock %}
 
 {% block content %}
-<style>
-    /* Style for the popup window */
-    .popup {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.5);
-        z-index: 9999;
-    }
+    <!-- Include Bootstrap and Chart.js stylesheets and scripts -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    .popup-content {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background-color: white;
-        padding: 20px;
-        border-radius: 5px;
-        box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
-        width: 400px; /* Set the width of the popup window */
-    }
+    <style>
+        .alert-overlay {
+            position: fixed;
+            top: 20%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(255, 0, 0, 0.9);
+            color: white;
+            padding: 20px;
+            border-radius: 5px;
+            z-index: 9999;
+            display: none;
+            font-size: 1.5rem;
+        }
+    </style>
 
-    .close {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        cursor: pointer;
-    }
-</style>
-
-<div class="row mt-4">
-    <div class="col-md-6">
-        <h2>Transactions</h2>
-    </div>
-    <div class="col-md-6 text-end">
-        <button class="btn btn-primary" onclick="openPopup()">Add Transaction</button>
-        <button class="btn btn-success" onclick="downloadCSV()"><i class="fa-solid fa-file-arrow-down"></i> CSV</button>
-    </div>
-</div>
-
-<!-- Income Transactions -->
-<div class="mt-4">
-    <h3>Income Transactions</h3>
-    <div class="table-responsive">
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>Amount</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for transaction in income_transactions %}
+    <div class="container mt-5">
+        <h1 class="text-center">Forecast Income and Expenses</h1>
+        <form id="dataForm" onsubmit="event.preventDefault(); submitData();">
+            <table class="table table-bordered mt-4">
+                <thead>
                     <tr>
-                        <td>{{ transaction[3] }}</td>  {# Date #}
-                        <td>Rp{{ transaction[2] }}</td>  {# Amount #}
-                        <td>
-                            <form action="{{ url_for('delete_transaction', transaction_type='income', transaction_id=transaction[0]) }}" method="post">
-                                <button type="submit" class="btn btn-danger"><i class="fas fa-trash-alt"></i></button>
-                            </form>
-                        </td>
+                        <th>Month</th>
+                        <th>Income</th>
+                        <th>Expenses</th>
                     </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<!-- Expense Transactions -->
-<div class="mt-4">
-    <h3>Expense Transactions</h3>
-    <div class="table-responsive">
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>Amount</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for transaction in expense_transactions %}
+                </thead>
+                <tbody>
+                    {% for month in range(1, 13) %}
                     <tr>
-                        <td>{{ transaction[3] }}</td>  {# Date #}
-                        <td>Rp{{ transaction[2] }}</td>  {# Amount #}
-                        <td>
-                            <form action="{{ url_for('delete_transaction', transaction_type='expense', transaction_id=transaction[0]) }}" method="post">
-                                <button type="submit" class="btn btn-danger"><i class="fas fa-trash-alt"></i></button>
-                            </form>
-                            
-                        </td>
+                        <td>Month {{ month }}</td>
+                        <td><input type="number" step="0.01" class="form-control income-input" placeholder="Enter income" required></td>
+                        <td><input type="number" step="0.01" class="form-control expense-input" placeholder="Enter expenses" required></td>
                     </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<!-- Popup window -->
-<div id="popup" class="popup">
-    <div class="popup-content p-4">
-        <span class="close" onclick="closePopup()">&times;</span>
-        <form action="{{ url_for('add_transaction') }}" method="post">
-            <div class="mb-3">
-                <label for="date" class="form-label">Date:</label>
-                <input type="date" id="date" name="date" class="form-control" required>
-            </div>
-            <div class="mb-3">
-                <label for="amount" class="form-label">Amount:</label>
-                <input type="number" id="amount" name="amount" class="form-control" required>
-            </div>
-            <div class="mb-3">
-                <label for="type" class="form-label">Type:</label>
-                <select id="type" name="type" class="form-select" required>
-                    <option value="income">Income</option>
-                    <option value="expense">Expense</option>
-                </select>
-            </div>
-            <button type="submit" class="btn btn-primary">Add Transaction</button>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <button type="submit" class="btn btn-primary w-100">Submit</button>
         </form>
+        <canvas id="forecastChart" class="mt-5"></canvas>
+        <div id="alert" class="alert-overlay">⚠️ Overspending Detected!</div>
     </div>
-</div>
 
-<script>
-    function openPopup() {
-        document.getElementById("popup").style.display = "block";
-    }
+    <script>
+        async function submitData() {
+            const data = collectData();
+            if (!data.income.length || !data.expenses.length) {
+                alert("Please fill in all fields.");
+                return;
+            }
+            const response = await fetch('/forecast', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ last_window: data })
+            });
+            const result = await response.json();
+            renderChart(result.forecasted_income, result.forecasted_expenses);
+        }
 
-    function closePopup() {
-        document.getElementById("popup").style.display = "none";
-    }
+        function collectData() {
+            const incomeInputs = document.querySelectorAll('.income-input');
+            const expenseInputs = document.querySelectorAll('.expense-input');
+            let incomeData = [];
+            let expenseData = [];
+            incomeInputs.forEach(input => incomeData.push(parseFloat(input.value) || 0));
+            expenseInputs.forEach(input => expenseData.push(parseFloat(input.value) || 0));
+            return { income: incomeData, expenses: expenseData };
+        }
 
-    function downloadCSV() {
-        const rows = document.querySelectorAll('table tbody tr');
-        let csvContent = 'Date,Amount,Type\n';
-        rows.forEach(row => {
-            const columns = row.querySelectorAll('td');
-            const rowData = Array.from(columns).map(column => column.textContent.replace(/\n/g, '').replace('Rp', ''));
-            csvContent += rowData.join(',') + '\n';
-        });
+        function renderChart(incomeData, expenseData) {
+            const ctx = document.getElementById('forecastChart').getContext('2d');
+            const months = Array.from({ length: 12 }, (_, i) => `Month ${i + 1}`);
 
-        const blob = new Blob([csvContent], { type: 'text/csv' });
-        const a = document.createElement('a');
-        a.href = window.URL.createObjectURL(blob);
-        a.download = 'transactions.csv';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-    }
-</script>
+            const overspendAlert = incomeData.map((income, idx) => 
+                income < expenseData[idx] ? idx : null
+            ).filter(i => i !== null);
 
+            const chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: months,
+                    datasets: [
+                        {
+                            label: 'Income',
+                            data: incomeData,
+                            borderColor: 'green',
+                            backgroundColor: 'rgba(0, 128, 0, 0.1)',
+                            fill: true
+                        },
+                        {
+                            label: 'Expenses',
+                            data: expenseData,
+                            borderColor: 'red',
+                            backgroundColor: 'rgba(255, 0, 0, 0.1)',
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                afterBody: (context) => {
+                                    const index = context[0].dataIndex;
+                                    if (overspendAlert.includes(index)) {
+                                        return '⚠️ Overspend!';
+                                    }
+                                    return '';
+                                }
+                            }
+                        },
+                        legend: {
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+
+            // Show overspend alert
+            if (overspendAlert.length > 0) {
+                const alert = document.getElementById('alert');
+                alert.style.display = 'block';
+                setTimeout(() => {
+                    alert.style.display = 'none';
+                }, 5000);
+            }
+        }
+    </script>
 {% endblock %}
